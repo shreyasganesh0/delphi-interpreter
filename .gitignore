@@ -1,0 +1,14 @@
+# 1. Compiled Java files (We only want to track source code, not the compiled output)
+*.class
+
+# 2. ANTLR4 generated metadata (ANTLR uses these internally, no need to track)
+*.tokens
+*.interp
+
+# 3. macOS system files (Prevents annoying hidden files from cluttering your repo)
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# 5. JAR files (Optional, read note below)
+*.jar
