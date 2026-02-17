@@ -27,6 +27,16 @@ public interface delphiListener extends ParseTreeListener {
 	 */
 	void exitBlock(delphiParser.BlockContext ctx);
 	/**
+	 * Enter a parse tree produced by {@link delphiParser#varDeclBlock}.
+	 * @param ctx the parse tree
+	 */
+	void enterVarDeclBlock(delphiParser.VarDeclBlockContext ctx);
+	/**
+	 * Exit a parse tree produced by {@link delphiParser#varDeclBlock}.
+	 * @param ctx the parse tree
+	 */
+	void exitVarDeclBlock(delphiParser.VarDeclBlockContext ctx);
+	/**
 	 * Enter a parse tree produced by {@link delphiParser#statement}.
 	 * @param ctx the parse tree
 	 */
@@ -37,6 +47,16 @@ public interface delphiListener extends ParseTreeListener {
 	 */
 	void exitStatement(delphiParser.StatementContext ctx);
 	/**
+	 * Enter a parse tree produced by {@link delphiParser#functionCall}.
+	 * @param ctx the parse tree
+	 */
+	void enterFunctionCall(delphiParser.FunctionCallContext ctx);
+	/**
+	 * Exit a parse tree produced by {@link delphiParser#functionCall}.
+	 * @param ctx the parse tree
+	 */
+	void exitFunctionCall(delphiParser.FunctionCallContext ctx);
+	/**
 	 * Enter a parse tree produced by {@link delphiParser#assignment}.
 	 * @param ctx the parse tree
 	 */
@@ -46,6 +66,26 @@ public interface delphiListener extends ParseTreeListener {
 	 * @param ctx the parse tree
 	 */
 	void exitAssignment(delphiParser.AssignmentContext ctx);
+	/**
+	 * Enter a parse tree produced by {@link delphiParser#varDecl}.
+	 * @param ctx the parse tree
+	 */
+	void enterVarDecl(delphiParser.VarDeclContext ctx);
+	/**
+	 * Exit a parse tree produced by {@link delphiParser#varDecl}.
+	 * @param ctx the parse tree
+	 */
+	void exitVarDecl(delphiParser.VarDeclContext ctx);
+	/**
+	 * Enter a parse tree produced by {@link delphiParser#type}.
+	 * @param ctx the parse tree
+	 */
+	void enterType(delphiParser.TypeContext ctx);
+	/**
+	 * Exit a parse tree produced by {@link delphiParser#type}.
+	 * @param ctx the parse tree
+	 */
+	void exitType(delphiParser.TypeContext ctx);
 	/**
 	 * Enter a parse tree produced by {@link delphiParser#expr}.
 	 * @param ctx the parse tree

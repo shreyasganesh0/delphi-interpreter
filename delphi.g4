@@ -48,7 +48,6 @@ INLINE: 'inline';
 PROPERTY: 'property';
 ASM: 'asm';
 FILE: 'file';
-LIBRARY: 'library';
 SET: 'set';
 EXPORTS: 'exports';
 SHL: 'shl';
@@ -57,6 +56,11 @@ NIL: 'nil';
 PACKED: 'packed';
 THREADVAR: 'threadvar';
 FINALLY: 'finally';
+DEPRECATED: 'deprecated';
+PLATFORM: 'platform';
+LIBRARY: 'library';
+INTEGER: 'Integer';
+EXTENDED: 'Extended';
 
 PLUS: '+';
 MINUS: '-';
@@ -73,6 +77,7 @@ DOLLAR: '$';
 AMPERSAND: '&';
 AT: '@';
 SEMI: ';';
+COLON: ':';
 ASSIGN: ':=';
 DOT: '.';
 COMMA: ',';
@@ -90,20 +95,35 @@ STAR: '*';
 QOUTE: '\'';
 
 ID: [a-zA-Z_][a-zA-Z0-9_]*;
-INT: (PLUS|MINUS)?[0-9]+;
+STR: '\''.*?'\'';
+INT: [0-9]+;
+WS: [ \t\r\n]+ -> skip;
 
 // PARSER 
 
-programRule: PROGRAM ID SEMI block DOT EOF;
+programRule: PROGRAM ID SEMI (varDeclBlock)?block DOT EOF;
 
 block: BEGIN statement* END;
 
-statement: assignment SEMI;
+varDeclBlock: VAR varDecl*;
+
+statement: assignment SEMI
+        | functionCall SEMI
+        ;
+functionCall: ID CIRCO expr CIRCC;
 
 assignment: ID ASSIGN expr;
 
+varDecl: ID COLON type SEMI
+    | ID COLON type (PLATFORM|DEPRECATED|LIBRARY) SEMI
+    ;
+
+type: (EXTENDED|INTEGER|STRING);
+
 expr: expr (STAR | SLASH) expr
     | expr (PLUS | MINUS) expr
+    | MINUS expr
     | INT
+    | STR
     | ID
     ; 

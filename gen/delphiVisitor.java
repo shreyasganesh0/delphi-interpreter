@@ -22,17 +22,41 @@ public interface delphiVisitor<T> extends ParseTreeVisitor<T> {
 	 */
 	T visitBlock(delphiParser.BlockContext ctx);
 	/**
+	 * Visit a parse tree produced by {@link delphiParser#varDeclBlock}.
+	 * @param ctx the parse tree
+	 * @return the visitor result
+	 */
+	T visitVarDeclBlock(delphiParser.VarDeclBlockContext ctx);
+	/**
 	 * Visit a parse tree produced by {@link delphiParser#statement}.
 	 * @param ctx the parse tree
 	 * @return the visitor result
 	 */
 	T visitStatement(delphiParser.StatementContext ctx);
 	/**
+	 * Visit a parse tree produced by {@link delphiParser#functionCall}.
+	 * @param ctx the parse tree
+	 * @return the visitor result
+	 */
+	T visitFunctionCall(delphiParser.FunctionCallContext ctx);
+	/**
 	 * Visit a parse tree produced by {@link delphiParser#assignment}.
 	 * @param ctx the parse tree
 	 * @return the visitor result
 	 */
 	T visitAssignment(delphiParser.AssignmentContext ctx);
+	/**
+	 * Visit a parse tree produced by {@link delphiParser#varDecl}.
+	 * @param ctx the parse tree
+	 * @return the visitor result
+	 */
+	T visitVarDecl(delphiParser.VarDeclContext ctx);
+	/**
+	 * Visit a parse tree produced by {@link delphiParser#type}.
+	 * @param ctx the parse tree
+	 * @return the visitor result
+	 */
+	T visitType(delphiParser.TypeContext ctx);
 	/**
 	 * Visit a parse tree produced by {@link delphiParser#expr}.
 	 * @param ctx the parse tree
