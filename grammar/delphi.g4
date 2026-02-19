@@ -249,7 +249,7 @@ visibility
 
 methodDecl
     : methodKind identifier (formalParameterList)? (COLON resultType)?
-      methodQualifier?
+      (SEMI methodQualifier)?
     ;
 
 methodQualifier
