@@ -42,7 +42,11 @@ public class DelphiInterpreter {
             return;
         }
 
+        ConstantFolder folder = new ConstantFolder();
+        folder.visit(tree);
+
         DelphiVisitor visitor = new DelphiVisitor();
+        visitor.setFoldedValues(folder.getFoldedValues());
         try {
             visitor.visit(tree);
         } catch (Exception ex) {
