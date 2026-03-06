@@ -5,6 +5,7 @@ import java.util.*;
 public class Environment {
 
     private final Map<String, Object> vars = new LinkedHashMap<>();
+    private final Set<String> constants = new HashSet<>();
     private final Environment parent;
 
     public Environment(Environment parent) {
@@ -13,6 +14,12 @@ public class Environment {
 
     public void define(String name, Object value) {
         vars.put(name.toLowerCase(), value);
+    }
+
+    public void defineConstant(String name, Object value) {
+        String key = name.toLowerCase();
+        vars.put(key, value);
+        constants.add(key);
     }
 
     public Object get(String name) {
@@ -31,6 +38,9 @@ public class Environment {
 
     public void set(String name, Object value) {
         String key = name.toLowerCase();
+        if (constants.contains(key)) {
+            throw new RuntimeException("Cannot assign to constant: " + name);
+        }
         if (vars.containsKey(key)) {
             vars.put(key, value);
         } else if (parent != null) {

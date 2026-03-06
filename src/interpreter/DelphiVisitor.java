@@ -20,6 +20,12 @@ public class DelphiVisitor extends delphiBaseVisitor<Object> {
 
     private final Scanner scanner = new Scanner(System.in);
 
+    private Map<ParserRuleContext, Object> foldedValues = null;
+
+    public void setFoldedValues(Map<ParserRuleContext, Object> foldedValues) {
+        this.foldedValues = foldedValues;
+    }
+
     @Override
     public Object visitProgram(delphiParser.ProgramContext ctx) {
         visit(ctx.block());
@@ -33,6 +39,8 @@ public class DelphiVisitor extends delphiBaseVisitor<Object> {
                 visitTypeDefinitionPart((delphiParser.TypeDefinitionPartContext) child);
             } else if (child instanceof delphiParser.VariableDeclarationPartContext) {
                 visitVariableDeclarationPart((delphiParser.VariableDeclarationPartContext) child);
+            } else if (child instanceof delphiParser.ConstantDefinitionPartContext) {
+                visitConstantDefinitionPart((delphiParser.ConstantDefinitionPartContext) child);
             } else if (child instanceof delphiParser.ProcedureAndFunctionDeclarationPartContext) {
                 registerProcOrFunc((delphiParser.ProcedureAndFunctionDeclarationPartContext) child);
             }
@@ -128,6 +136,16 @@ public class DelphiVisitor extends delphiBaseVisitor<Object> {
         Object defaultVal = defaultForType(typeName);
         for (var id : ctx.identifierList().identifier()) {
             currentEnv.define(id.getText(), defaultVal);
+        }
+        return null;
+    }
+
+    @Override
+    public Object visitConstantDefinitionPart(delphiParser.ConstantDefinitionPartContext ctx) {
+        for (var cd : ctx.constantDefinition()) {
+            String name = cd.identifier().getText();
+            Object value = visitConstant(cd.constant());
+            currentEnv.defineConstant(name, value);
         }
         return null;
     }
@@ -235,10 +253,22 @@ public class DelphiVisitor extends delphiBaseVisitor<Object> {
         if (ctx.ioStatement() != null)         return visit(ctx.ioStatement());
         if (ctx.inheritedStatement() != null)  return visit(ctx.inheritedStatement());
         if (ctx.procedureStatement() != null)  return visit(ctx.procedureStatement());
-        if (ctx.gotoStatement() != null)       return null; 
+        if (ctx.breakStatement() != null)      return visit(ctx.breakStatement());
+        if (ctx.continueStatement() != null)   return visit(ctx.continueStatement());
+        if (ctx.gotoStatement() != null)       return null;
         return null;
     }
 
+
+    @Override
+    public Object visitBreakStatement(delphiParser.BreakStatementContext ctx) {
+        throw new BreakException();
+    }
+
+    @Override
+    public Object visitContinueStatement(delphiParser.ContinueStatementContext ctx) {
+        throw new ContinueException();
+    }
 
     @Override
     public Object visitAssignmentStatement(delphiParser.AssignmentStatementContext ctx) {
@@ -260,6 +290,11 @@ public class DelphiVisitor extends delphiBaseVisitor<Object> {
             }
             if (currentSelf != null && currentSelf.hasField(baseName)) {
                 currentSelf.setField(baseName, value);
+                return;
+            }
+            Object existing = currentEnv.has(baseName) ? currentEnv.get(baseName) : null;
+            if (existing instanceof VarReference) {
+                ((VarReference) existing).set(value);
                 return;
             }
             currentEnv.set(baseName, value);
@@ -370,17 +405,18 @@ public class DelphiVisitor extends delphiBaseVisitor<Object> {
         if (paramCtx != null) {
             for (var ap : paramCtx.actualParameter()) args.add(visit(ap.expression()));
         }
-        return dispatchCall(varCtx, args);
+        return dispatchCall(varCtx, args, paramCtx);
     }
 
-    private Object dispatchCall(delphiParser.VariableContext varCtx, List<Object> args) {
+    private Object dispatchCall(delphiParser.VariableContext varCtx, List<Object> args,
+                                  delphiParser.ParameterListContext callerParams) {
         String baseName = (varCtx.identifier() != null)
                 ? varCtx.identifier().getText()
                 : "Self";
         var suffixes = varCtx.variableSuffix();
 
         if (suffixes.isEmpty()) {
-            return callNamed(baseName, args);
+            return callNamed(baseName, args, callerParams);
         }
 
         var lastSuffix = suffixes.get(suffixes.size() - 1);
@@ -412,7 +448,7 @@ public class DelphiVisitor extends delphiBaseVisitor<Object> {
         return null;
     }
 
-    private Object callNamed(String name, List<Object> args) {
+    private Object callNamed(String name, List<Object> args, delphiParser.ParameterListContext callerParams) {
         switch (name.toLowerCase()) {
             case "inc":
                 if (!args.isEmpty()) {
@@ -440,7 +476,7 @@ public class DelphiVisitor extends delphiBaseVisitor<Object> {
         if (globalEnv.has(name)) {
             Object stored = globalEnv.get(name);
             if (stored instanceof ParserRuleContext) {
-                return callMethod(null, (ParserRuleContext) stored, args);
+                return callMethod(null, (ParserRuleContext) stored, args, callerParams);
             }
         }
 
@@ -502,8 +538,14 @@ public class DelphiVisitor extends delphiBaseVisitor<Object> {
     }
 
     private Object callMethod(ObjectInstance self, ParserRuleContext bodyCtx, List<Object> args) {
+        return callMethod(self, bodyCtx, args, null);
+    }
+
+    private Object callMethod(ObjectInstance self, ParserRuleContext bodyCtx, List<Object> args,
+                               delphiParser.ParameterListContext callerParams) {
         Environment saved = currentEnv;
         ObjectInstance savedSelf = currentSelf;
+        Environment callerEnv = currentEnv;
 
         Environment callEnv = new Environment(globalEnv);
         currentEnv = callEnv;
@@ -516,7 +558,7 @@ public class DelphiVisitor extends delphiBaseVisitor<Object> {
         try {
             if (bodyCtx instanceof delphiParser.ProcedureDeclarationContext) {
                 var ctx = (delphiParser.ProcedureDeclarationContext) bodyCtx;
-                bindParameters(ctx.formalParameterList(), args, callEnv);
+                bindParameters(ctx.formalParameterList(), args, callEnv, callerParams, callerEnv);
                 visitBlock(ctx.block());
                 return null;
 
@@ -525,24 +567,26 @@ public class DelphiVisitor extends delphiBaseVisitor<Object> {
                 String resultName = ctx.qualifiedMethodName().identifier(
                         ctx.qualifiedMethodName().identifier().size() - 1).getText();
                 callEnv.define("result", defaultForType(ctx.resultType().typeIdentifier().getText().toLowerCase()));
-                bindParameters(ctx.formalParameterList(), args, callEnv);
+                bindParameters(ctx.formalParameterList(), args, callEnv, callerParams, callerEnv);
                 visitBlock(ctx.block());
                 return callEnv.get("result");
 
             } else if (bodyCtx instanceof delphiParser.ConstructorDeclarationContext) {
                 var ctx = (delphiParser.ConstructorDeclarationContext) bodyCtx;
-                bindParameters(ctx.formalParameterList(), args, callEnv);
+                bindParameters(ctx.formalParameterList(), args, callEnv, callerParams, callerEnv);
                 visitBlock(ctx.block());
                 return self;
 
             } else if (bodyCtx instanceof delphiParser.DestructorDeclarationContext) {
                 var ctx = (delphiParser.DestructorDeclarationContext) bodyCtx;
-                bindParameters(ctx.formalParameterList(), args, callEnv);
+                bindParameters(ctx.formalParameterList(), args, callEnv, callerParams, callerEnv);
                 visitBlock(ctx.block());
                 return null;
             }
         } catch (ReturnException re) {
             return re.value;
+        } catch (BreakException | ContinueException e) {
+            throw new RuntimeException("Break/Continue used outside of a loop");
         } finally {
             currentEnv = saved;
             currentSelf = savedSelf;
@@ -551,13 +595,29 @@ public class DelphiVisitor extends delphiBaseVisitor<Object> {
     }
 
     private void bindParameters(delphiParser.FormalParameterListContext fpl,
-                                  List<Object> args, Environment env) {
+                                  List<Object> args, Environment env,
+                                  delphiParser.ParameterListContext callerParams,
+                                  Environment callerEnv) {
         if (fpl == null) return;
         int argIdx = 0;
         for (var section : fpl.formalParameterSection()) {
             var pg = section.parameterGroup();
             if (pg == null) continue;
+            boolean isVar = section.VAR() != null;
             for (var id : pg.identifierList().identifier()) {
+                if (isVar && callerParams != null && argIdx < callerParams.actualParameter().size()) {
+                    var callerExpr = callerParams.actualParameter(argIdx).expression();
+                    var simpleExpr = callerExpr.simpleExpression(0);
+                    if (simpleExpr != null && simpleExpr.term() != null) {
+                        var sf = simpleExpr.term().signedFactor();
+                        if (sf != null && sf.factor() != null && sf.factor().variable() != null) {
+                            String varName = sf.factor().variable().identifier().getText();
+                            env.define(id.getText(), new VarReference(callerEnv, varName));
+                            argIdx++;
+                            continue;
+                        }
+                    }
+                }
                 Object val = argIdx < args.size() ? args.get(argIdx++) : null;
                 env.define(id.getText(), val);
             }
@@ -577,8 +637,20 @@ public class DelphiVisitor extends delphiBaseVisitor<Object> {
 
     @Override
     public Object visitWhileStatement(delphiParser.WhileStatementContext ctx) {
-        while (toBool(visit(ctx.expression()))) {
-            visit(ctx.statement());
+        Environment saved = currentEnv;
+        currentEnv = new Environment(currentEnv);
+        try {
+            while (toBool(visit(ctx.expression()))) {
+                try {
+                    visit(ctx.statement());
+                } catch (ContinueException e) {
+                    // continue to next iteration
+                } catch (BreakException e) {
+                    break;
+                }
+            }
+        } finally {
+            currentEnv = saved;
         }
         return null;
     }
@@ -586,7 +658,13 @@ public class DelphiVisitor extends delphiBaseVisitor<Object> {
     @Override
     public Object visitRepeatStatement(delphiParser.RepeatStatementContext ctx) {
         do {
-            visit(ctx.statements());
+            try {
+                visit(ctx.statements());
+            } catch (ContinueException e) {
+                // continue to next iteration
+            } catch (BreakException e) {
+                return null;
+            }
         } while (!toBool(visit(ctx.expression())));
         return null;
     }
@@ -598,16 +676,34 @@ public class DelphiVisitor extends delphiBaseVisitor<Object> {
         int end   = toInt(visit(ctx.forList().finalValue()));
         boolean downTo = ctx.forList().DOWNTO() != null;
 
-        if (!downTo) {
-            for (int i = start; i <= end; i++) {
-                currentEnv.set(varName, i);
-                visit(ctx.statement());
+        Environment saved = currentEnv;
+        currentEnv = new Environment(currentEnv);
+        try {
+            if (!downTo) {
+                for (int i = start; i <= end; i++) {
+                    currentEnv.set(varName, i);
+                    try {
+                        visit(ctx.statement());
+                    } catch (ContinueException e) {
+                        // continue
+                    } catch (BreakException e) {
+                        break;
+                    }
+                }
+            } else {
+                for (int i = start; i >= end; i--) {
+                    currentEnv.set(varName, i);
+                    try {
+                        visit(ctx.statement());
+                    } catch (ContinueException e) {
+                        // continue
+                    } catch (BreakException e) {
+                        break;
+                    }
+                }
             }
-        } else {
-            for (int i = start; i >= end; i--) {
-                currentEnv.set(varName, i);
-                visit(ctx.statement());
-            }
+        } finally {
+            currentEnv = saved;
         }
         return null;
     }
@@ -645,6 +741,9 @@ public class DelphiVisitor extends delphiBaseVisitor<Object> {
 
     @Override
     public Object visitExpression(delphiParser.ExpressionContext ctx) {
+        if (foldedValues != null && foldedValues.containsKey(ctx)) {
+            return foldedValues.get(ctx);
+        }
         Object left = visit(ctx.simpleExpression(0));
         if (ctx.relationaloperator() == null) return left;
         Object right = visit(ctx.simpleExpression(1));
@@ -669,6 +768,9 @@ public class DelphiVisitor extends delphiBaseVisitor<Object> {
 
     @Override
     public Object visitSimpleExpression(delphiParser.SimpleExpressionContext ctx) {
+        if (foldedValues != null && foldedValues.containsKey(ctx)) {
+            return foldedValues.get(ctx);
+        }
         Object left = visit(ctx.term());
         if (ctx.additiveoperator() == null) return left;
         Object right = visit(ctx.simpleExpression());
@@ -694,6 +796,9 @@ public class DelphiVisitor extends delphiBaseVisitor<Object> {
 
     @Override
     public Object visitTerm(delphiParser.TermContext ctx) {
+        if (foldedValues != null && foldedValues.containsKey(ctx)) {
+            return foldedValues.get(ctx);
+        }
         Object left = visit(ctx.signedFactor());
         if (ctx.multiplicativeoperator() == null) return left;
         Object right = visit(ctx.term());
@@ -743,7 +848,7 @@ public class DelphiVisitor extends delphiBaseVisitor<Object> {
         if (ctx.parameterList() != null) {
             for (var ap : ctx.parameterList().actualParameter()) args.add(visit(ap.expression()));
         }
-        return dispatchCall(ctx.variable(), args);
+        return dispatchCall(ctx.variable(), args, ctx.parameterList());
     }
 
     @Override
@@ -811,7 +916,11 @@ public class DelphiVisitor extends delphiBaseVisitor<Object> {
         if (name.equalsIgnoreCase("self")) {
             return currentSelf;
         }
-        if (currentEnv.has(name)) return currentEnv.get(name);
+        if (currentEnv.has(name)) {
+            Object val = currentEnv.get(name);
+            if (val instanceof VarReference) return ((VarReference) val).get();
+            return val;
+        }
         if (currentSelf != null && currentSelf.hasField(name)) {
             return currentSelf.getField(name);
         }

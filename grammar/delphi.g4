@@ -362,8 +362,13 @@ simpleStatement
     | inheritedStatement
     | procedureStatement
     | gotoStatement
+    | breakStatement
+    | continueStatement
     | emptyStatement_
     ;
+
+breakStatement : BREAK ;
+continueStatement : CONTINUE ;
 
 assignmentStatement
     : variable ASSIGN expression
@@ -581,12 +586,14 @@ ARRAY        : 'ARRAY' ;
 AS           : 'AS' ;
 BEGIN        : 'BEGIN' ;
 BOOLEAN      : 'BOOLEAN' ;
+BREAK        : 'BREAK' ;
 CASE         : 'CASE' ;
 CHAR         : 'CHAR' ;
 CHR          : 'CHR' ;
 CLASS        : 'CLASS' ;
 CONST        : 'CONST' ;
 CONSTRUCTOR  : 'CONSTRUCTOR' ;
+CONTINUE     : 'CONTINUE' ;
 DESTRUCTOR   : 'DESTRUCTOR' ;
 DIV          : 'DIV' ;
 DO           : 'DO' ;
