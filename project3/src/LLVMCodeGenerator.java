@@ -3,21 +3,7 @@ import org.antlr.v4.runtime.ParserRuleContext;
 
 import java.util.*;
 
-/**
- * Walks the ANTLR parse tree and emits LLVM IR text.
- *
- * Procedural Pascal subset supported:
- *   integer / real / boolean / string-literal expressions
- *   if / while / for-to/downto / repeat-until + break/continue
- *   procedures, functions (recursion ok), VAR pass-by-reference parameters
- *   constants + integration with ConstantFolder for [FOLDED] propagation
- *   I/O: Write, WriteLn, ReadLn (integers + strings)
- *
- * Not supported: classes, interfaces, inheritance, records, arrays, sets, files, goto.
- */
 public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value> {
-
-    // ---------- Pascal-side type model ----------
 
     enum PT {
         INT, REAL, BOOL, STR, VOID;
@@ -44,7 +30,6 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
         }
     }
 
-    /** A typed LLVM operand (e.g. "%1" of type i32, or "42" of type i32). */
     static class Value {
         final String ref;
         final PT type;
@@ -53,12 +38,12 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
     }
 
     static class Symbol {
-        final String irPtr;        // an LLVM pointer to storage (e.g. "%x.addr" or "@g_x")
+        final String irPtr;
         final PT type;
         final boolean isGlobal;
-        final boolean isVarParam;  // if true, irPtr is a function parameter that's already a pointer
+        final boolean isVarParam;
         final boolean isConstant;
-        final Object constValue;   // populated when isConstant == true (Integer/Double/Boolean/String)
+        final Object constValue;
 
         Symbol(String irPtr, PT type, boolean isGlobal, boolean isVarParam,
                boolean isConstant, Object constValue) {
@@ -68,9 +53,8 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
         }
     }
 
-    /** Function metadata stored at module scope. */
     static class FunctionSig {
-        final String irName;          // mangled, with leading "@"
+        final String irName;
         final PT retType;
         final List<PT>      paramTypes = new ArrayList<>();
         final List<Boolean> paramIsVar = new ArrayList<>();
@@ -78,7 +62,6 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
         FunctionSig(String irName, PT ret) { this.irName = irName; this.retType = ret; }
     }
 
-    /** A scope: maps lowercase names to symbols. Chained for static lookup. */
     static class Scope {
         final Scope parent;
         final Map<String, Symbol> table = new LinkedHashMap<>();
@@ -91,14 +74,11 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
         }
     }
 
-    /** Stack of {continue, break} labels for the active loops. */
     static class LoopCtx {
         final String continueLbl;
         final String breakLbl;
         LoopCtx(String c, String b) { this.continueLbl = c; this.breakLbl = b; }
     }
-
-    // ---------- module-level emission state ----------
 
     private final ConstantFolder folder;
 
@@ -114,21 +94,18 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
     private final Scope globalScope = new Scope(null);
     private final Map<String, FunctionSig> functions = new LinkedHashMap<>();
 
-    // ---------- per-function state ----------
-
-    private StringBuilder fnBody;        // the body emitted between { and }
-    private StringBuilder fnAllocas;     // allocas to be inserted at top of entry
-    private int regCounter;              // %0, %1, ... per function
-    private int labelCounter;            // for unique label suffixes
-    private String currentBlock;         // null after a terminator
+    private StringBuilder fnBody;
+    private StringBuilder fnAllocas;
+    private int regCounter;
+    private int labelCounter;
+    private String currentBlock;
     private boolean blockHasTerminator;
     private Scope currentScope;
-    private FunctionSig currentFn;       // null when emitting main
+    private FunctionSig currentFn;
     private final Deque<LoopCtx> loopStack = new ArrayDeque<>();
 
     public LLVMCodeGenerator(ConstantFolder folder) {
         this.folder = folder;
-        // Module preamble
         moduleHead.append("; ModuleID = 'pascal'\n");
         moduleHead.append("source_filename = \"pascal\"\n\n");
         moduleHead.append("declare i32 @printf(i8*, ...)\n");
@@ -147,15 +124,10 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
         return out.toString();
     }
 
-    // ============================================================
-    //                 PROGRAM / BLOCK / DECLARATIONS
-    // ============================================================
-
     @Override
     public Value visitProgram(delphiParser.ProgramContext ctx) {
         currentScope = globalScope;
 
-        // Pass A: collect global var declarations + constants from the top-level block
         delphiParser.BlockContext block = ctx.block();
         for (var child : block.children) {
             if (child instanceof delphiParser.VariableDeclarationPartContext) {
@@ -165,7 +137,6 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
             }
         }
 
-        // Pass B: pre-declare every procedure/function so calls resolve regardless of order
         for (var child : block.children) {
             if (child instanceof delphiParser.ProcedureAndFunctionDeclarationPartContext) {
                 preDeclareCallable(((delphiParser.ProcedureAndFunctionDeclarationPartContext) child)
@@ -173,7 +144,6 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
             }
         }
 
-        // Pass C: emit each procedure/function body
         for (var child : block.children) {
             if (child instanceof delphiParser.ProcedureAndFunctionDeclarationPartContext) {
                 emitCallable(((delphiParser.ProcedureAndFunctionDeclarationPartContext) child)
@@ -181,7 +151,6 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
             }
         }
 
-        // Pass D: emit @main containing the program's compound statement
         beginFunction(null, "@main", PT.INT, List.of(), List.of(), List.of());
         visit(block.compoundStatement());
         endMainWithReturn();
@@ -213,7 +182,6 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
         }
     }
 
-    /** Map a Pascal type name to our PT enum. Default INT. */
     private PT inferType(String typeName) {
         String t = typeName.toLowerCase();
         if (t.contains("integer") || t.contains("longint") || t.contains("smallint") ||
@@ -232,10 +200,6 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
         if (v instanceof String)  return PT.STR;
         return PT.INT;
     }
-
-    // ============================================================
-    //              PROCEDURE / FUNCTION DECLARATIONS
-    // ============================================================
 
     private void preDeclareCallable(delphiParser.ProcedureOrFunctionDeclarationContext ctx) {
         if (ctx.procedureDeclaration() != null) {
@@ -274,7 +238,7 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
 
     private void emitCallable(delphiParser.ProcedureOrFunctionDeclarationContext ctx) {
         boolean isFunction = ctx.functionDeclaration() != null;
-        if (!isFunction && ctx.procedureDeclaration() == null) return; // skip ctor/dtor
+        if (!isFunction && ctx.procedureDeclaration() == null) return;
 
         String name = isFunction
                 ? ctx.functionDeclaration().qualifiedMethodName().getText()
@@ -287,7 +251,6 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
         beginFunction(sig, sig.irName, sig.retType, sig.paramTypes, sig.paramIsVar, sig.paramNames);
 
         if (isFunction) {
-            // Allocate result slot named after the function (Pascal allows `Funcname := X` and `Result := X`)
             allocaInEntry("%result.addr", sig.retType);
             currentScope.define("result",
                     new Symbol("%result.addr", sig.retType, false, false, false, null));
@@ -295,8 +258,6 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
                     new Symbol("%result.addr", sig.retType, false, false, false, null));
         }
 
-        // Local var declarations + nested procedures are not used in our test set,
-        // but we still walk the block declarations for local vars.
         for (var child : body.children) {
             if (child instanceof delphiParser.VariableDeclarationPartContext) {
                 collectLocals((delphiParser.VariableDeclarationPartContext) child);
@@ -308,7 +269,6 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
         visit(body.compoundStatement());
 
         if (isFunction) {
-            // ensure terminator
             ensureBlock();
             String r = freshReg();
             emit(r + " = load " + sig.retType.llvm() + ", " + sig.retType.llvm() + "* %result.addr");
@@ -334,15 +294,11 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
         }
     }
 
-    // ============================================================
-    //                    FUNCTION SCOPE BOOKKEEPING
-    // ============================================================
-
     private void beginFunction(FunctionSig sig, String irName, PT ret,
                                 List<PT> paramTypes, List<Boolean> paramIsVar,
                                 List<String> paramNames) {
         currentFn = sig;
-        currentScope = new Scope(globalScope);  // static scoping: only globals visible
+        currentScope = new Scope(globalScope);
         fnBody = new StringBuilder();
         fnAllocas = new StringBuilder();
         regCounter = 0;
@@ -351,7 +307,6 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
         blockHasTerminator = false;
         loopStack.clear();
 
-        // Function header
         fnBody.append("define ").append(ret.llvm()).append(' ').append(irName).append('(');
         StringBuilder paramRefs = new StringBuilder();
         List<String> incomingNames = new ArrayList<>();
@@ -365,13 +320,11 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
         fnBody.append(") {\n");
         fnBody.append("entry:\n");
 
-        // Bind each formal parameter into the current scope
         for (int i = 0; i < paramNames.size(); i++) {
             String pname = paramNames.get(i);
             PT t = paramTypes.get(i);
             boolean isVar = paramIsVar.get(i);
             if (isVar) {
-                // The incoming arg is already a pointer T*; expose it directly
                 currentScope.define(pname, new Symbol(incomingNames.get(i), t, false, true, false, null));
             } else {
                 String slot = "%" + pname.toLowerCase() + ".addr";
@@ -389,7 +342,6 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
     }
 
     private void flushFunction() {
-        // splice allocas into the entry block
         funcs.append(fnBody.substring(0, fnBody.indexOf("entry:") + "entry:\n".length()));
         funcs.append(fnAllocas);
         funcs.append(fnBody.substring(fnBody.indexOf("entry:") + "entry:\n".length()));
@@ -399,10 +351,6 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
         fnBody = null;
         fnAllocas = null;
     }
-
-    // ============================================================
-    //                    STATEMENTS
-    // ============================================================
 
     @Override
     public Value visitCompoundStatement(delphiParser.CompoundStatementContext ctx) {
@@ -422,7 +370,6 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
         if (sym == null) throw new RuntimeException("Undefined: " + name);
         Value v = visit(ctx.expression());
         v = coerce(v, sym.type);
-        // VAR param: the incoming pointer is already T*
         emit("store " + sym.type.llvm() + " " + v.ref + ", " + sym.type.llvm() + "* " + sym.irPtr);
         return null;
     }
@@ -484,7 +431,6 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
         blockHasTerminator = true;
         startBlock(condL);
         Value c = toI1(visit(ctx.expression()));
-        // repeat-until exits when condition is TRUE
         emit("br i1 " + c.ref + ", label %" + endL + ", label %" + bodyL);
         blockHasTerminator = true;
         startBlock(endL);
@@ -500,7 +446,6 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
 
         Value init = coerce(visit(ctx.forList().initialValue().expression()), sym.type);
         Value end  = coerce(visit(ctx.forList().finalValue().expression()),  sym.type);
-        // Stash final value into an alloca so it's stable across iterations
         String endSlot = "%" + freshSuffix("for.end");
         allocaInEntry(endSlot, sym.type);
         emit("store " + sym.type.llvm() + " " + end.ref + ", " + sym.type.llvm() + "* " + endSlot);
@@ -508,11 +453,10 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
 
         String entryL = freshLabel("for.entry");
         String bodyL  = freshLabel("for.body");
-        String postL  = freshLabel("for.post");   // continue target
+        String postL  = freshLabel("for.post");
         String stepL  = freshLabel("for.step");
         String endL   = freshLabel("for.end");
 
-        // Initial check (handles start > end / start < end for downto: skip the body entirely)
         emit("br label %" + entryL);
         startBlock(entryL);
         String cur  = freshReg();
@@ -531,7 +475,6 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
         if (!blockHasTerminator) emit("br label %" + postL);
         blockHasTerminator = true;
 
-        // Post-body: if x == end, exit (Pascal preserves final value). Otherwise step.
         startBlock(postL);
         String cur2 = freshReg();
         emit(cur2 + " = load " + sym.type.llvm() + ", " + sym.type.llvm() + "* " + sym.irPtr);
@@ -605,12 +548,10 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
         for (int i = 0; i < actuals.size(); i++) {
             boolean isVar = i < sig.paramIsVar.size() && sig.paramIsVar.get(i);
             if (isVar) {
-                // pass the pointer to the actual variable
                 String varName = extractSimpleVarName(actuals.get(i).expression());
                 Symbol s = currentScope.lookup(varName);
                 if (s == null) throw new RuntimeException("VAR arg must be a variable: " + varName);
-                if (s.isVarParam) refs.add(s.irPtr); // already a pointer
-                else refs.add(s.irPtr);
+                refs.add(s.irPtr);
             } else {
                 Value v = visit(actuals.get(i).expression());
                 v = coerce(v, sig.paramTypes.get(i));
@@ -628,10 +569,6 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
             throw new RuntimeException("VAR argument must be a simple variable, got: " + e.getText());
         }
     }
-
-    // ============================================================
-    //                    I/O
-    // ============================================================
 
     @Override
     public Value visitIoStatement(delphiParser.IoStatementContext ctx) {
@@ -662,7 +599,6 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
     }
 
     private void emitPrintf(List<Value> args, boolean addNewline) {
-        // Build a printf format string by concatenating each arg's format token
         StringBuilder fmt = new StringBuilder();
         List<Value> realArgs = new ArrayList<>();
         for (Value v : args) {
@@ -670,7 +606,6 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
             else if (v.type == PT.REAL) { fmt.append("%g"); realArgs.add(v); }
             else if (v.type == PT.STR)  { fmt.append("%s"); realArgs.add(v); }
             else if (v.type == PT.BOOL) {
-                // print "TRUE" / "FALSE" via select
                 String tStr = internStringPtr("TRUE");
                 String fStr = internStringPtr("FALSE");
                 String chosen = freshReg();
@@ -708,13 +643,8 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
         emit(r + " = call i32 (i8*, ...) @scanf(i8* " + fmtPtr + ", " + s.type.llvm() + "* " + s.irPtr + ")");
     }
 
-    // ============================================================
-    //                    EXPRESSIONS
-    // ============================================================
-
     @Override
     public Value visitExpression(delphiParser.ExpressionContext ctx) {
-        // honor folded values
         Object folded = folder.getFoldedValues().get(ctx);
         if (folded != null) return literalValue(folded);
 
@@ -799,12 +729,9 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
         return new Value(r, sig.retType);
     }
 
-    /** Read a simple variable (no suffixes) from its alloca/global/var-param pointer. */
     private Value readVariable(delphiParser.VariableContext ctx) {
         String name = ctx.identifier().getText();
 
-        // Could also be a no-arg function call: in tests this happens via procedureStatement,
-        // not here — but for safety check for function with zero params.
         FunctionSig sig = functions.get(name.toLowerCase());
         if (sig != null && sig.paramTypes.isEmpty()) {
             String r = freshReg();
@@ -824,10 +751,6 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
         return new Value(r, s.type);
     }
 
-    // ============================================================
-    //                    OP HELPERS
-    // ============================================================
-
     private Value emitAdditive(delphiParser.AdditiveoperatorContext op, Value l, Value r) {
         if (op.OR() != null) {
             l = toI1(l); r = toI1(r);
@@ -841,7 +764,6 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
             emit(reg + " = xor i1 " + l.ref + ", " + r.ref);
             return new Value(reg, PT.BOOL);
         }
-        // arithmetic +, -
         boolean useReal = l.type == PT.REAL || r.type == PT.REAL;
         l = coerce(l, useReal ? PT.REAL : PT.INT);
         r = coerce(r, useReal ? PT.REAL : PT.INT);
@@ -877,7 +799,6 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
             emit(reg + " = srem i32 " + l.ref + ", " + r.ref);
             return new Value(reg, PT.INT);
         }
-        // STAR
         boolean useReal = l.type == PT.REAL || r.type == PT.REAL;
         l = coerce(l, useReal ? PT.REAL : PT.INT);
         r = coerce(r, useReal ? PT.REAL : PT.INT);
@@ -889,9 +810,6 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
 
     private Value emitRelational(delphiParser.RelationaloperatorContext op, Value l, Value r) {
         boolean useReal = l.type == PT.REAL || r.type == PT.REAL;
-        if (l.type == PT.STR && r.type == PT.STR) {
-            // string comparison - not supported in the tested subset, fall through
-        }
         if (useReal) { l = coerce(l, PT.REAL); r = coerce(r, PT.REAL); }
         else if (l.type == PT.INT || r.type == PT.INT) {
             l = coerce(l, PT.INT); r = coerce(r, PT.INT);
@@ -919,10 +837,6 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
         return new Value(reg, PT.BOOL);
     }
 
-    // ============================================================
-    //                    UTIL
-    // ============================================================
-
     private Value literalValue(Object v) {
         if (v instanceof Integer) return new Value(v.toString(), PT.INT);
         if (v instanceof Double)  return new Value(formatReal((Double) v), PT.REAL);
@@ -938,7 +852,6 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
         return Double.toString(d);
     }
 
-    /** Coerce value to target type (only int↔real promotion + i1 widening supported). */
     private Value coerce(Value v, PT target) {
         if (v.type == target) return v;
         if (target == PT.REAL && v.type == PT.INT) {
@@ -969,12 +882,10 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
         return coerce(v, PT.BOOL);
     }
 
-    /** Intern a runtime string literal, return an i8* pointer expression. */
     private String internStringPtr(String s) {
         String key = s;
         if (internedStrings.containsKey(key)) return internedStrings.get(key);
 
-        // build the C-style escaped string and compute its byte length (incl. trailing \00)
         StringBuilder esc = new StringBuilder();
         int len = 0;
         for (int i = 0; i < s.length(); i++) {
@@ -987,7 +898,7 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
             else if (c >= 32 && c < 127) { esc.append(c); len++; }
             else { esc.append(String.format("\\%02X", (int) c)); len++; }
         }
-        len += 1; // null terminator
+        len += 1;
         String name = "@.str." + (strCounter++);
         strPool.append(name).append(" = private unnamed_addr constant [")
                .append(len).append(" x i8] c\"").append(esc).append("\\00\"\n");
@@ -1017,7 +928,6 @@ public class LLVMCodeGenerator extends delphiBaseVisitor<LLVMCodeGenerator.Value
         blockHasTerminator = false;
     }
 
-    /** If a previous instruction was a terminator, open a fresh block before emitting. */
     private void ensureBlock() {
         if (blockHasTerminator) startBlock(freshLabel("cont"));
     }

@@ -1,6 +1,4 @@
 #!/bin/bash
-# Compile each tests/testN.pas to LLVM IR, build a native binary with clang,
-# run it, and diff against tests/expected_testN.txt.
 
 ANTLR_JAR="lib/antlr-4.13.2-complete.jar"
 BIN_DIR="bin"
@@ -28,16 +26,13 @@ for src in "$TEST_DIR"/test*.pas; do
   echo "TEST: ${name}"
   echo "──────────────────────────────────────────────────────"
 
-  # Compile .pas -> .ll. Capture [FOLDED] traces (printed on stdout) so we can diff them.
   fold_out=$(java -cp "$BIN_DIR:$ANTLR_JAR" Main "$src" 2>/dev/null)
 
-  # Compile .ll -> native binary.
   if ! clang "$ll" -o "$exe" 2>/dev/null; then
     echo "  clang failed"
     FAIL=$((FAIL+1)); continue
   fi
 
-  # Combined output that mirrors the interpreter: [FOLDED] lines first, then runtime.
   if [ -n "$fold_out" ]; then
     actual=$(printf '%s\n%s' "$fold_out" "$("$exe")")
   else

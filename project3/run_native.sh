@@ -1,5 +1,4 @@
 #!/bin/bash
-# Compile a single .pas file all the way to a native binary and run it.
 set -e
 if [ -z "$1" ]; then
   echo "Usage: $0 <file.pas>"
