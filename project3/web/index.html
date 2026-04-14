@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Pascal → WASM demo</title>
+<style>
+  body  { font-family: ui-monospace, Menlo, monospace; max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
+  pre   { background: #111; color: #eee; padding: 1rem; border-radius: 6px; min-height: 6rem; white-space: pre-wrap; }
+  button{ padding: .6rem 1rem; font-size: 1rem; cursor: pointer; }
+</style>
+</head>
+<body>
+  <h1>Pascal → LLVM IR → WebAssembly</h1>
+  <p>
+    Loads <code>output.wasm</code> (produced from a Pascal program by this project's compiler),
+    instantiates it, and invokes the exported <code>main</code> function. Output written by the
+    program via <code>printf</code> is captured through a small JavaScript stdio shim and shown below.
+  </p>
+  <button id="run">Run program</button>
+  <pre id="out">— output will appear here —</pre>
+  <script src="loader.js"></script>
+</body>
+</html>
