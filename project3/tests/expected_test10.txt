@@ -1,0 +1,15 @@
+Global x = 10
+Global y = 20
+
+Outer x = 50
+Inner x = 999
+Inner sees global y = 20
+Outer x after Inner = 50
+
+Global x after calls = 10
+
+=== Loop Scoping ===
+Loop x = 1
+Loop x = 2
+Loop x = 3
+x after loop = 3

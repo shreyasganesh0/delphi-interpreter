@@ -1,0 +1,10 @@
+A+B => 21 [FOLDED]
+A*B+C => 115 [FOLDED]
+A+B => 21 [FOLDED]
+A-B => -1 [FOLDED]
+A+B>15 => true [FOLDED]
+=== Constant Propagation Demo ===
+2 * (A + B) = 42
+A * B + C = 115
+(A + B) * (A - B) = -21
+A + B > 15 is True

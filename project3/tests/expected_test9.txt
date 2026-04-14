@@ -1,0 +1,18 @@
+=== Factorial ===
+Factorial(0) = 1
+Factorial(1) = 1
+Factorial(2) = 2
+Factorial(3) = 6
+Factorial(4) = 24
+Factorial(5) = 120
+Factorial(6) = 720
+Factorial(7) = 5040
+
+=== Fibonacci ===
+0 1 1 2 3 5 8 13 21 34 55 
+
+=== Max ===
+Max(3, 7) = 7
+Max(10, 2) = 10
+
+>> Hello from a procedure!

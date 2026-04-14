@@ -1,0 +1,12 @@
+=== For with Break ===
+First i where i*i > 50: 8
+=== For with Continue ===
+1 2 4 5 7 8 10 
+=== Nested Loops with Break ===
+1 
+1 2 
+1 2 3 
+1 2 3 4 
+1 2 3 4 5 
+=== Repeat with Break ===
+Stopped at i = 3

@@ -1,0 +1,11 @@
+MAX_SIZE+OFFSET => 110 [FOLDED]
+Hello, Constants!
+MAX_SIZE = 100
+PI_APPROX = 3
+Approximate area of circle with r=5: 75
+MAX_SIZE + OFFSET = 110
+
+=== Constants in loops ===
+r=1 area~=3
+r=2 area~=12
+r=3 area~=27
